@@ -1,8 +1,16 @@
+'use server'
+
 import { redirect } from 'next/navigation'
 import nodemailer from 'nodemailer'
 
 // 一時的にPINコードを保存（本来はRedisやDBを使用）
-const pinStore = new Map<string, { pin: string; timestamp: number }>()
+// 開発環境でのホットリロード対策でglobalオブジェクトを使用
+const globalForPinStore = globalThis as unknown as {
+  pinStore: Map<string, { pin: string; timestamp: number }> | undefined
+}
+
+const pinStore = globalForPinStore.pinStore ?? new Map<string, { pin: string; timestamp: number }>()
+globalForPinStore.pinStore = pinStore
 
 // SMTPトランスポーター設定（Mailpit用）
 const transporter = nodemailer.createTransport({
@@ -41,8 +49,6 @@ export async function sendPinCode(formData: FormData) {
       `
     })
     
-    console.log(`PIN sent to ${email}: ${pin}`)
-    
   } catch (error) {
     console.error('メール送信エラー:', error)
     throw new Error('メール送信に失敗しました')
@@ -50,4 +56,58 @@ export async function sendPinCode(formData: FormData) {
   
   // PINコード入力ページへリダイレクト
   redirect(`/pin?email=${encodeURIComponent(email)}`)
+}
+
+export async function verifyPinCode(formData: FormData) {
+  const email = formData.get('email') as string
+  const pin = formData.get('pin') as string
+  
+  if (!email || !pin) {
+    throw new Error('メールアドレスまたはPINコードが入力されていません')
+  }
+  
+  // 保存されたPINコードを確認
+  const storedData = pinStore.get(email)
+  
+  if (!storedData) {
+    throw new Error('PINコードが見つかりません。再度メールアドレスを入力してください。')
+  }
+  
+  // 有効期限チェック
+  if (Date.now() > storedData.timestamp) {
+    pinStore.delete(email)
+    throw new Error('PINコードの有効期限が切れています。再度メールアドレスを入力してください。')
+  }
+  
+  // PINコード照合
+  if (storedData.pin !== pin) {
+    throw new Error('PINコードが間違っています。')
+  }
+  
+  // 検証成功 - PINコードを削除
+  pinStore.delete(email)
+  
+  // セッション作成
+  const { getSession } = await import('../../lib/session')
+  const session = await getSession()
+  
+  session.email = email
+  session.isLoggedIn = true
+  await session.save()
+    
+  // ダッシュボードへリダイレクト
+  redirect('/dashboard')
+}
+
+export async function logout() {
+  const { getSession } = await import('../../lib/session')
+  const session = await getSession()
+  
+  // セッションをクリア
+  session.email = undefined
+  session.isLoggedIn = false
+  await session.save()
+    
+  // ログインページへリダイレクト
+  redirect('/login')
 }

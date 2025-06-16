@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "iron-session": "^8.0.4",
     "next": "15.3.3",
     "nodemailer": "^7.0.3",
     "react": "19.1.0",

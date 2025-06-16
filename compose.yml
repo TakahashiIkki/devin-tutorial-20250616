@@ -1,0 +1,9 @@
+services:
+  mail:
+    image: axllent/mailpit
+    container_name: test-mail
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    environment:
+      TZ: Asia/Tokyo
